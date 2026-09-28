@@ -5,14 +5,56 @@ document.addEventListener('DOMContentLoaded', function () {
 
 function initializeApp() {
     initializeTheme();
-    initializeCopyFunctionality();
     initializeSearchFunctionality();
     initializeQuickActions();
-    initializeQRFunctionality();
     initializeKeyboardShortcuts();
     loadUsageCounts();
 
-    console.log('ACONG BOT initialized!');
+    // Templates
+    loadTemplates();
+    initializeTemplateControls();
+
+    // Default tampilkan
+    showTemplatesGrid();
+}
+
+function initializeTemplateControls() {
+    const toggleBtn = document.getElementById('toggleAllBtn');
+    const filterBar = document.getElementById('templateFilterBar');
+    const inlineSearch = document.getElementById('templateSearchInline');
+    const pillsWrap = document.getElementById('tmplCatPills');
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function () {
+            toggleAllTemplates();
+            const grid = document.getElementById('templatesGrid');
+            const isNowVisible = !grid.classList.contains('hidden');
+            if (filterBar) filterBar.style.display = isNowVisible ? 'flex' : 'none';
+            if (isNowVisible) applyTemplateFilter();
+        });
+    }
+
+    if (inlineSearch) {
+        inlineSearch.addEventListener('input', () => applyTemplateFilter());
+    }
+
+    if (pillsWrap) {
+        pillsWrap.addEventListener('click', function (e) {
+            const pill = e.target.closest('.tmpl-pill');
+            if (!pill) return;
+            this.querySelectorAll('.tmpl-pill').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            applyTemplateFilter();
+        });
+    }
+}
+
+function initializeQuickActions() {
+    document.querySelectorAll('.quick-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            handleQuickAction(this.getAttribute('data-template'));
+        });
+    });
 }
 
 // ==================== THEME ====================
@@ -44,36 +86,6 @@ function initializeTheme() {
     });
 }
 
-// ==================== COPY TEXT ====================
-function initializeCopyFunctionality() {
-    document.querySelectorAll('.card.copyable').forEach(card => {
-        card.addEventListener('click', function () {
-            const targetId = this.getAttribute('data-target');
-            const textElement = document.getElementById(targetId);
-
-            if (!textElement) {
-                showToast('Error: Element tidak ditemukan');
-                return;
-            }
-
-            const text = textElement.innerText.trim();
-            if (!text) {
-                showToast('Tidak ada teks untuk disalin');
-                return;
-            }
-
-            navigator.clipboard.writeText(text).then(() => {
-                updateUsageCount(targetId);
-                this.classList.add('copied');
-                setTimeout(() => this.classList.remove('copied'), 500);
-                showToast("✅ Teks berhasil disalin!");
-            }).catch(err => {
-                console.error(err);
-                showToast('❌ Gagal menyalin teks');
-            });
-        });
-    });
-}
 
 function updateUsageCount(targetId) {
     const countElement = document.getElementById(`count-${targetId}`);
@@ -86,61 +98,65 @@ function updateUsageCount(targetId) {
 }
 
 // ==================== SEARCH ====================
+// ==================== SEARCH ====================
 function initializeSearchFunctionality() {
     const searchInput = document.getElementById('searchInput');
     if (!searchInput) return;
 
     searchInput.addEventListener('input', function (e) {
-        const searchTerm = e.target.value.toLowerCase().trim();
+        const q = e.target.value.toLowerCase().trim();
 
-        // Reset semua dulu
-        document.querySelectorAll('.card, .quick-action-btn, .quick-action-category, .section').forEach(el => {
-            el.style.display = '';
-        });
+        // Sync ke inline search
+        const inlineInput = document.getElementById('templateSearchInline');
+        if (inlineInput && inlineInput.value !== e.target.value) {
+            inlineInput.value = e.target.value;
+        }
 
-        if (searchTerm === '') return;
+        // Reset tampilan dulu
+        document.querySelectorAll('.template-card, .quick-btn, .quick-group, .templates-section, .quick-actions-section')
+            .forEach(el => el.style.display = '');
+
+        if (q === '') {
+            // Balikin filter bar ke state normal
+            applyTemplateFilter();
+            return;
+        }
 
         let foundResults = false;
 
-        // ===== 1. Filter CARDS (Text Box) =====
-        document.querySelectorAll('.card').forEach(card => {
-            // Ambil SEMUA teks dari card (judul + isi + footer)
-            // Cara paling aman: pakai textContent seluruh card
+        // ===== 1. Filter TEMPLATE CARDS =====
+        document.querySelectorAll('.template-card').forEach(card => {
             const fullText = (card.textContent || '').toLowerCase();
-            const match = fullText.includes(searchTerm);
-
+            const match = fullText.includes(q);
             card.style.display = match ? '' : 'none';
             if (match) foundResults = true;
         });
 
         // ===== 2. Filter QUICK ACTION BUTTONS =====
-        document.querySelectorAll('.quick-action-btn').forEach(btn => {
-            const text = (btn.querySelector('.quick-action-text')?.textContent || '').toLowerCase();
-            const match = text.includes(searchTerm);
+        document.querySelectorAll('.quick-btn').forEach(btn => {
+            const fullText = (btn.textContent || '').toLowerCase();
+            const match = fullText.includes(q);
             btn.style.display = match ? '' : 'none';
             if (match) foundResults = true;
         });
 
-        // ===== 3. Hide empty quick action categories =====
-        document.querySelectorAll('.quick-action-category').forEach(cat => {
-            const hasVisibleBtn = Array.from(cat.querySelectorAll('.quick-action-btn'))
+        // ===== 3. Hide empty quick groups =====
+        document.querySelectorAll('.quick-group').forEach(group => {
+            const hasVisibleBtn = Array.from(group.querySelectorAll('.quick-btn'))
                 .some(btn => btn.style.display !== 'none');
-            const hasVisibleCard = Array.from(cat.querySelectorAll('.card'))
-                .some(card => card.style.display !== 'none');
-
-            // category tetap tampil kalau ada isinya yang visible
-            cat.style.display = (hasVisibleBtn || hasVisibleCard) ? '' : 'none';
+            group.style.display = hasVisibleBtn ? '' : 'none';
         });
 
         // ===== 4. Hide empty sections =====
-        document.querySelectorAll('.section').forEach(section => {
-            const hasVisibleCards = Array.from(section.querySelectorAll('.card'))
-                .some(c => c.style.display !== 'none');
-            const hasVisibleQA = Array.from(section.querySelectorAll('.quick-action-btn'))
-                .some(b => b.style.display !== 'none');
-
-            section.style.display = (hasVisibleCards || hasVisibleQA) ? '' : 'none';
+        document.querySelectorAll('.quick-actions-section, .templates-section').forEach(section => {
+            const hasVisible = Array.from(section.querySelectorAll('.template-card, .quick-btn'))
+                .some(el => el.style.display !== 'none');
+            section.style.display = hasVisible ? '' : 'none';
         });
+
+        // ===== 5. Tampilkan pesan empty state kalau nggak ada hasil =====
+        const emptyEl = document.getElementById('tmplEmpty');
+        if (emptyEl) emptyEl.style.display = foundResults ? 'none' : 'block';
 
         if (!foundResults) showToast('🔍 Tidak ada hasil ditemukan');
     });
@@ -154,50 +170,13 @@ function initializeSearchFunctionality() {
         }
     });
 }
-// ==================== QUICK ACTIONS ====================
+
 function initializeQuickActions() {
-    document.querySelectorAll('.quick-action-btn').forEach(btn => {
+    document.querySelectorAll('.quick-btn').forEach(btn => {
         btn.addEventListener('click', function () {
-            const targetId = this.getAttribute('data-target');
-
-            if (targetId === 'qris') {
-                // Ambil gambar dari <img class="qris-logo"> di dalam tombol ini
-                const imgEl = this.querySelector('img.qris-logo') || this.querySelector('img');
-                handleImageCopy(this, imgEl, 'QRIS');
-            } else {
-                copyFromQuickAction(targetId, this);
-            }
+            const templateKey = this.getAttribute('data-template');
+            handleQuickAction(templateKey);
         });
-    });
-}
-
-function copyFromQuickAction(targetId, button) {
-    const textElement = document.getElementById(targetId);
-    if (!textElement) {
-        showToast('Error: Element tidak ditemukan');
-        return;
-    }
-
-    const text = textElement.innerText.trim();
-    if (!text) {
-        showToast('Tidak ada teks untuk disalin');
-        return;
-    }
-
-    navigator.clipboard.writeText(text).then(() => {
-        updateUsageCount(targetId);
-        button.classList.add('copied');
-        setTimeout(() => button.classList.remove('copied'), 1000);
-
-        const actionNames = {
-            'code1': 'Order',
-            'code2': 'Kirim Username',
-            'code3': 'Link GC',
-        };
-        showToast(`✅ ${actionNames[targetId] || 'Teks'} berhasil disalin!`);
-    }).catch(err => {
-        console.error(err);
-        showToast('❌ Gagal menyalin teks');
     });
 }
 
@@ -356,8 +335,7 @@ function imageElementToPngBlob(imgElement) {
 }
 
 // ==================== HANDLE IMAGE COPY (dengan feedback) ====================
-async function handleImageCopy(triggerEl, imgSource, label) {
-    // Kalau imgSource adalah <img> element, ambil src-nya; kalau string, pakai langsung
+async function handleImageCopy(triggerEl, imgSource, label, templateId = null) {
     let source = imgSource;
     if (imgSource instanceof HTMLImageElement) {
         source = imgSource.currentSrc || imgSource.src;
@@ -371,10 +349,22 @@ async function handleImageCopy(triggerEl, imgSource, label) {
     try {
         await copyImageToClipboard(source);
 
-        triggerEl.classList.add('copied');
-        setTimeout(() => triggerEl.classList.remove('copied'), 1000);
+        // Flash trigger element (quick button / card)
+        flashCopied(triggerEl);
 
-        updateUsageCount(label === 'QRIS' ? 'qris-quick' : 'qr-code');
+        // Kalau dari template (ada ID) → update count + flash card template
+        if (templateId !== null) {
+            incrementTemplateCount(templateId);
+
+            // Flash card template juga
+            const card = document.querySelector(`.template-card[data-id="${templateId}"]`);
+            if (card && card !== triggerEl) {
+                flashCopied(card);
+            }
+        } else {
+            updateUsageCount(label === 'QRIS' ? 'qris-quick' : 'qr-code');
+        }
+
         showToast(`🖼️ Gambar ${label} berhasil disalin ke clipboard!`);
     } catch (err) {
         console.error('Copy image failed:', err);
@@ -457,4 +447,283 @@ function showToast(message) {
     window.__toastTimer = setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);
+}
+
+// ==================== TEMPLATES DATA ====================
+// Ini tempat data template kamu. Ganti sesuai kebutuhan.
+// Format: { id, name, category, content }
+// category: "order" | "problem" | "status" | "other"
+
+const templatesData = [
+    {
+        id: 1,
+        name: "Order",
+        category: "order",
+        content: `*RANK VS BOT MAX 🌟75*
+
+*3K PERMATCH*
+
+> ⎋ FLEX ON 
+> ⎋ LIMIT 5 GAME
+> ⎋ MMR DERES N12+
+> ⎋ BOT WARLIT JINAK
+
+
+SUDAH PAYMENT SS + SEBUT NICKNAME DAN HERO APA`
+    },
+    {
+        id: 2,
+        name: "Kirim Username",
+        category: "order",
+        content: `Dana masuk, kirim username`
+    },
+    {
+        id: 3,
+        name: "Link Grup",
+        category: "order",
+        content: `https://chat.whatsapp.com/EAKgivEWKKzGU1kULniiuj`
+    },
+    {
+        id: 4,
+        name: "QRIS",
+        category: "order",
+        type: "image",
+        image: "foto/qr.png",
+        content: "Klik untuk copy gambar QRIS"
+    },
+    // Tambahkan template lain sesuai kebutuhan
+];
+
+// ==================== TEMPLATE STATE ====================
+let templatesHidden = true;
+let activeCategory = 'all';
+
+function getCategoryName(cat) {
+    return {
+        order: 'Order',
+        problem: 'Problem',
+        status: 'Status',
+        other: 'Lainnya'
+    }[cat] || 'Lainnya';
+}
+
+function getCategoryIcon(cat) {
+    return {
+        order: 'fa-shopping-cart',
+        problem: 'fa-exclamation-triangle',
+        status: 'fa-info-circle',
+        other: 'fa-ellipsis-h'
+    }[cat] || 'fa-tag';
+}
+
+// ==================== LOAD TEMPLATES ====================
+function loadTemplates() {
+    const grid = document.getElementById('templatesGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const countEl = document.getElementById('templateCount');
+    if (countEl) countEl.textContent = templatesData.length;
+
+    templatesData.forEach(t => {
+        const used = localStorage.getItem(`template-${t.id}-used`) || 0;
+        const card = document.createElement('div');
+        card.className = 'template-card';
+        card.setAttribute('data-id', t.id);
+        card.setAttribute('data-category', t.category);
+        card.setAttribute('data-name', t.name.toLowerCase());
+        card.setAttribute('data-preview', (t.content || '').slice(0, 100).toLowerCase());
+        card.setAttribute('data-type', t.type || 'text');
+
+        // Body beda buat text vs image
+        const bodyContent = t.type === 'image'
+            ? `<div class="tc-image-wrap"><img src="${t.image}" alt="${t.name}" class="tc-image" loading="lazy"></div>`
+            : `<div class="tc-preview">${t.content.trim().substring(0, 120)}${t.content.length > 120 ? '...' : ''}</div>
+               <div class="tc-content hidden">${t.content}</div>`;
+
+        card.innerHTML = `
+            <div class="tc-accent-bar"></div>
+            <div class="tc-body">
+                <div class="tc-header">
+                    <div class="tc-category-badge"><i class="fas ${getCategoryIcon(t.category)}"></i>${getCategoryName(t.category)}</div>
+                    <span class="tc-used-badge">${used}×</span>
+                </div>
+                <h4 class="tc-name">${t.name}</h4>
+                ${bodyContent}
+            </div>
+            <div class="tc-footer">
+                <span class="tc-tap-hint"><i class="fas fa-${t.type === 'image' ? 'image' : 'hand-pointer'}"></i> ${t.type === 'image' ? 'Tap to copy image' : 'Tap to copy'}</span>
+                <button class="tc-copy-btn" data-id="${t.id}"><i class="fas fa-copy"></i> Copy</button>
+            </div>`;
+        grid.appendChild(card);
+    });
+
+    addTemplateEventListeners();
+}
+
+function addTemplateEventListeners() {
+    document.querySelectorAll('.tc-copy-btn').forEach(btn => {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            copyTemplate(this.getAttribute('data-id'));
+        });
+    });
+
+    document.querySelectorAll('.template-card').forEach(card => {
+        card.addEventListener('click', function (e) {
+            if (!e.target.closest('.tc-copy-btn')) {
+                copyTemplate(this.getAttribute('data-id'));
+            }
+        });
+    });
+}
+
+// ==================== COPY TEMPLATE ====================
+function copyTemplate(id) {
+    const t = templatesData.find(x => x.id == id);
+    if (!t) return;
+
+    // Kalau image → copy image
+    if (t.type === 'image') {
+        const img = document.querySelector(`.template-card[data-id="${id}"] .tc-image`);
+        if (img) {
+            handleImageCopy(
+                document.querySelector(`.template-card[data-id="${id}"]`),
+                img,
+                t.name,
+                t.id
+            );
+        } else {
+            showToast('❌ Gambar tidak ditemukan');
+        }
+        return;
+    }
+
+    // Kalau text → copy text
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(t.content)
+            .then(() => handleCopySuccess(id, t.name))
+            .catch(() => fallbackCopy(t.content, id, t.name));
+    } else {
+        fallbackCopy(t.content, id, t.name);
+    }
+}
+
+function handleCopySuccess(id, name) {
+    incrementTemplateCount(id);
+
+    const card = document.querySelector(`.template-card[data-id="${id}"]`);
+    flashCopied(card);   // ← pakai helper
+
+    showToast(`✅ "${name}" dicopy!`);
+}
+
+function flashCopied(el) {
+    if (!el) return;
+    el.classList.remove('copied');
+    void el.offsetWidth;   // ← force reflow
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 1200);
+}
+
+function incrementTemplateCount(id) {
+    const n = parseInt(localStorage.getItem(`template-${id}-used`) || 0) + 1;
+    localStorage.setItem(`template-${id}-used`, n);
+
+    const card = document.querySelector(`.template-card[data-id="${id}"]`);
+    if (card) {
+        const badge = card.querySelector('.tc-used-badge');
+        if (badge) badge.textContent = n + '×';
+    }
+}
+
+function fallbackCopy(text, id, name) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy') ? handleCopySuccess(id, name) : showToast('❌ Gagal copy');
+    } catch {
+        showToast('❌ Gagal copy');
+    }
+    document.body.removeChild(ta);
+}
+
+// ==================== TOGGLE TEMPLATES ====================
+function showTemplatesGrid() {
+    if (!templatesHidden) return;
+    templatesHidden = false;
+    document.getElementById('templatesGrid').classList.remove('hidden');
+    document.getElementById('toggleAllBtn').innerHTML = '<i class="fas fa-eye-slash"></i><span>Sembunyikan</span>';
+
+    document.querySelectorAll('.tc-preview').forEach(c => c.classList.add('hidden'));
+    document.querySelectorAll('.tc-content').forEach(c => c.classList.remove('hidden'));
+}
+
+function hideTemplatesGrid() {
+    if (templatesHidden) return;
+    templatesHidden = true;
+    document.getElementById('templatesGrid').classList.add('hidden');
+    document.getElementById('toggleAllBtn').innerHTML = '<i class="fas fa-eye"></i><span>Tampilkan</span>';
+
+    document.querySelectorAll('.tc-preview').forEach(c => c.classList.remove('hidden'));
+    document.querySelectorAll('.tc-content').forEach(c => c.classList.add('hidden'));
+}
+
+function toggleAllTemplates() {
+    templatesHidden ? showTemplatesGrid() : hideTemplatesGrid();
+}
+
+// ==================== FILTER ====================
+function applyTemplateFilter(forceQ) {
+    const q = forceQ !== undefined
+        ? forceQ
+        : (document.getElementById('templateSearchInline')?.value.toLowerCase().trim() || '');
+
+    const activePill = document.querySelector('#tmplCatPills .tmpl-pill.active');
+    const cat = activePill ? activePill.dataset.cat : 'all';
+
+    const cards = document.querySelectorAll('#templatesGrid .template-card');
+    let visible = 0;
+
+    cards.forEach(card => {
+        const name = card.getAttribute('data-name') || '';
+        const preview = card.getAttribute('data-preview') || '';
+        const cardCat = card.getAttribute('data-category') || '';
+
+        const matchCat = cat === 'all' || cardCat === cat;
+        const matchQ = q === '' || name.includes(q) || preview.includes(q);
+        const show = matchCat && matchQ;
+
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+
+    const emptyEl = document.getElementById('tmplEmpty');
+    if (emptyEl) emptyEl.style.display = visible === 0 ? 'block' : 'none';
+}
+
+// ==================== QUICK ACTIONS HANDLER ====================
+function handleQuickAction(templateKey) {
+    // Cari template berdasarkan name (case-insensitive) atau ID
+    const idMap = {
+        'order': 1, 'kirimuser': 2, 'linkgc': 3, 'qris': 4
+    };
+
+    const templateId = idMap[templateKey];
+    if (!templateId) {
+        showToast(`⚠️ Template "${templateKey}" belum terdaftar`);
+        return;
+    }
+
+    if (templateKey === 'qris') {
+        const btn = document.querySelector('.qris-btn');
+        const img = btn?.querySelector('.qris-logo');
+        if (img) handleImageCopy(btn, img, 'QRIS', templateId);
+        return;
+    }
+
+    copyTemplate(templateId);
 }
