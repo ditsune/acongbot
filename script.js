@@ -8,7 +8,6 @@ function initializeApp() {
     initializeSearchFunctionality();
     initializeQuickActions();
     initializeKeyboardShortcuts();
-    loadUsageCounts();
 
     // Templates
     loadTemplates();
@@ -49,14 +48,6 @@ function initializeTemplateControls() {
     }
 }
 
-function initializeQuickActions() {
-    document.querySelectorAll('.quick-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            handleQuickAction(this.getAttribute('data-template'));
-        });
-    });
-}
-
 // ==================== THEME ====================
 function initializeTheme() {
     document.documentElement.classList.remove('dark-preload');
@@ -86,17 +77,6 @@ function initializeTheme() {
     });
 }
 
-
-function updateUsageCount(targetId) {
-    const countElement = document.getElementById(`count-${targetId}`);
-    if (!countElement) return;
-
-    let count = parseInt(countElement.textContent) || 0;
-    count++;
-    countElement.textContent = count;
-    localStorage.setItem(`count-${targetId}`, count);
-}
-
 // ==================== SEARCH ====================
 // ==================== SEARCH ====================
 function initializeSearchFunctionality() {
@@ -117,14 +97,13 @@ function initializeSearchFunctionality() {
             .forEach(el => el.style.display = '');
 
         if (q === '') {
-            // Balikin filter bar ke state normal
             applyTemplateFilter();
             return;
         }
 
         let foundResults = false;
 
-        // ===== 1. Filter TEMPLATE CARDS =====
+        // Filter TEMPLATE CARDS
         document.querySelectorAll('.template-card').forEach(card => {
             const fullText = (card.textContent || '').toLowerCase();
             const match = fullText.includes(q);
@@ -132,7 +111,7 @@ function initializeSearchFunctionality() {
             if (match) foundResults = true;
         });
 
-        // ===== 2. Filter QUICK ACTION BUTTONS =====
+        // Filter QUICK ACTION BUTTONS
         document.querySelectorAll('.quick-btn').forEach(btn => {
             const fullText = (btn.textContent || '').toLowerCase();
             const match = fullText.includes(q);
@@ -140,21 +119,21 @@ function initializeSearchFunctionality() {
             if (match) foundResults = true;
         });
 
-        // ===== 3. Hide empty quick groups =====
+        // Hide empty quick groups
         document.querySelectorAll('.quick-group').forEach(group => {
             const hasVisibleBtn = Array.from(group.querySelectorAll('.quick-btn'))
                 .some(btn => btn.style.display !== 'none');
             group.style.display = hasVisibleBtn ? '' : 'none';
         });
 
-        // ===== 4. Hide empty sections =====
+        // Hide empty sections
         document.querySelectorAll('.quick-actions-section, .templates-section').forEach(section => {
             const hasVisible = Array.from(section.querySelectorAll('.template-card, .quick-btn'))
                 .some(el => el.style.display !== 'none');
             section.style.display = hasVisible ? '' : 'none';
         });
 
-        // ===== 5. Tampilkan pesan empty state kalau nggak ada hasil =====
+        // Empty state
         const emptyEl = document.getElementById('tmplEmpty');
         if (emptyEl) emptyEl.style.display = foundResults ? 'none' : 'block';
 
@@ -362,7 +341,7 @@ async function handleImageCopy(triggerEl, imgSource, label, templateId = null) {
                 flashCopied(card);
             }
         } else {
-            updateUsageCount(label === 'QRIS' ? 'qris-quick' : 'qr-code');
+            console.warn('[handleImageCopy] No templateId, skipping count update');
         }
 
         showToast(`🖼️ Gambar ${label} berhasil disalin ke clipboard!`);
@@ -370,37 +349,6 @@ async function handleImageCopy(triggerEl, imgSource, label, templateId = null) {
         console.error('Copy image failed:', err);
         showToast(`❌ Gagal: ${err.message}`);
     }
-}
-
-// ==================== QR CARD ====================
-function initializeQRFunctionality() {
-    document.querySelectorAll('.qr-card').forEach(card => {
-        card.addEventListener('click', function () {
-            const img = this.querySelector('.qr-image');
-            if (!img) {
-                showToast('❌ Gambar QR Code tidak tersedia');
-                return;
-            }
-            handleImageCopy(this, img, 'QR Code');
-        });
-    });
-
-    // Handle error/load gambar
-    document.querySelectorAll('.qr-image').forEach(img => {
-        img.addEventListener('error', function () {
-            const card = this.closest('.qr-card');
-            const placeholder = card?.querySelector('.qr-placeholder');
-            if (placeholder) {
-                placeholder.style.display = 'flex';
-                this.style.display = 'none';
-            }
-        });
-
-        img.addEventListener('load', function () {
-            const placeholder = this.closest('.qr-card')?.querySelector('.qr-placeholder');
-            if (placeholder) placeholder.style.display = 'none';
-        });
-    });
 }
 
 // ==================== KEYBOARD SHORTCUTS ====================
@@ -423,15 +371,6 @@ function initializeKeyboardShortcuts() {
                 showToast("🧹 Search cleared");
             }
         }
-    });
-}
-
-// ==================== USAGE COUNTS ====================
-function loadUsageCounts() {
-    document.querySelectorAll('.usage-count span').forEach(span => {
-        const id = span.id.replace('count-', '');
-        const count = localStorage.getItem(`count-${id}`) || '0';
-        span.textContent = count;
     });
 }
 
